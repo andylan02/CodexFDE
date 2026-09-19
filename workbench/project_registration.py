@@ -15,6 +15,9 @@ class ProjectRegistration:
     @staticmethod
     def git(args, cwd=None, timeout=120):
         env = os.environ.copy()
+        for key in list(env):
+            if key.startswith('GIT_CONFIG'):
+                env.pop(key, None)
         env.update(GIT_TERMINAL_PROMPT='0', GCM_INTERACTIVE='Never')
         # Only ordinary network protocols; no helpers, submodules or checkout hooks.
         command = ['git', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always',
