@@ -7,6 +7,7 @@ const deliveryStageViews = {
   confirmed: ['等待授权', '方案已确认，可以开始执行', '授权后，工作台将创建隔离副本，交给 Codex 修改并运行项目检查。', 'attention', 2, 'plan'],
   queued: ['排队中', '已接收，等待执行位置', '本机按顺序处理代码交付；无需重复提交。', 'running', 3, 'action'],
   executing: ['执行与复验', '工作台正在组织本轮交付', '实际改动与独立检查结果会一并返回。你可以离开页面，稍后回来查看。', 'running', 3, 'action'],
+  checking: ['候选质量检查', 'Eval Harness 正在复验候选', '本轮不调用 Codex 修改代码，结束后保留分项结果与来源。', 'running', 3, 'result'],
   cancelling: ['正在停止', '正在停止并保留本轮记录', '停止完成后可以补充需求，再发起新一轮。', 'running', 3, 'action'],
   cancelled: ['已停止', '核对已有记录，再继续', '此前输出和候选会保留。补充新的要求后，重新调研。', 'attention', 0, 'action'],
   interrupted: ['运行中断', '上次运行已中断，需要重新核对', '工作台不会自动重复执行旧任务。请先查看记录，再决定如何继续。', 'attention', 0, 'action'],
@@ -29,14 +30,22 @@ function uiElement(tag, className, text) {
   if(text!==undefined)el.textContent=text; return el;
 }
 let homeRows=[], homeFilter='attention', homeRead=0;
-async function setHomeCleared(row, button) {
+const homeClearNotices=new Map();
+async function setHomeCleared(row, button, notice) {
   if(button.disabled)return;
+  const report=text=>{homeClearNotices.set(row.item.id,text);notice.textContent=text;};
+  if(!Object.prototype.hasOwnProperty.call(row.item,'home_hidden')) {
+    report('当前服务尚未加载清除功能，请重启 8001 工作台服务后刷新页面。仅刷新页面不能更新后台。');
+    return;
+  }
   button.disabled=true;
+  report(row.item.home_hidden?'正在恢复…':'正在清除…');
   try {
     await api('/api/v1/initiatives/'+encodeURIComponent(row.item.id)+(row.item.home_hidden?'/restore-home':'/clear-home'),
       {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({actor:actorName(),version:row.item.version})});
+    homeClearNotices.delete(row.item.id);
     await refreshProjectHome();
-  } catch(error) {show('home-status','清除或恢复未完成：'+error.message);}
+  } catch(error) {report('清除或恢复未完成：'+error.message);}
   finally {button.disabled=false;}
 }
 async function openProjectInitiative(id) {
@@ -73,7 +82,10 @@ function renderProjectHome() {
     clear.title='从首页移出，可恢复；交付记录和失败证据保留。';
     clear.disabled=view.group==='running' || view.group==='unknown';
     if(clear.disabled)clear.title='请等待运行结束并刷新状态后再清除。';
-    clear.onclick=()=>setHomeCleared(row,clear);next.append(clear);
+    const notice=uiElement('p','hint',homeClearNotices.get(item.id) || '');
+    notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');
+    card.append(notice);
+    clear.onclick=()=>setHomeCleared(row,clear,notice);next.append(clear);
     if(item.home_hidden)meta.append(uiElement('span','demo-badge','已从首页清除'));
   }
   if(!visible.length) {

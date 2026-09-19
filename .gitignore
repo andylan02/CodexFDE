@@ -32,6 +32,7 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.artifacts/
 MANIFEST
 
 # PyInstaller
@@ -77,7 +78,12 @@ instance/
 .scrapy
 
 
-docs/
+# Docs: exclude slide folders and PowerPoint files
+/docs/**/slides/
+/docs/**/*.pptx
+/docs/courses/教师资料/
+/docs/courses/slides/
+
 
 # PyBuilder
 .pybuilder/

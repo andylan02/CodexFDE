@@ -24,6 +24,32 @@ function workflow(stage) {
   return {id:'I1',stage,enabled:true,messages:[],iterations:[],documents:[],progress:[],
     proposal:{goal:'goal',acceptance:[],non_goals:[],sources:[],write_scope:[],steps:[],questions:['Which scope?']}};
 }
+
+test('Eval panel distinguishes warning, stale evidence, running and failed attempts',()=>{
+  const {context,node}=setup();
+  const work=workflow('review');
+  work.task={id:'T1',status:'review',events:[]};
+  work.eval_harness={available:true,can_run:true,freshness:'current',
+    summary:{decision:'pass',passed:1,total:2,blocking_failed:0,observing_failed:1},
+    results:[{name:'help',level:'observing',passed:false,duration_ms:3,evidence:'<script>not executable</script>'}]};
+  context.renderInitiativeWork(work);
+  assert.match(node('iw-eval-summary').textContent,/观察告警 1/);
+  assert.match(node('iw-eval-results').children[0].children[0].textContent,/观察.*3 ms/);
+  assert.equal(node('iw-eval-results').children[0].children[1].textContent,'<script>not executable</script>');
+  work.eval_harness.freshness='stale';
+  context.renderInitiativeWork(work);
+  assert.equal(node('iw-accept').disabled,true);
+  assert.match(node('iw-eval-source').textContent,/旧结论不可用于验收/);
+  work.stage='checking';
+  context.renderInitiativeWork(work);
+  assert.equal(node('iw-eval-run').disabled,true);
+  assert.equal(node('iw-accept').hidden,true);
+  assert.equal(node('iw-pane-result').hidden,false);
+  work.stage='failed';work.eval_harness={available:false,error:'invalid report'};
+  context.renderInitiativeWork(work);
+  assert.match(node('iw-eval-summary').textContent,/未形成可信报告/);
+  assert.equal(node('iw-eval-results').children.length,0);
+});
 test('failed, interrupted and unreadable work never appears as an outcome',()=>{
   const {context}=setup();
   for(const stage of ['failed','interrupted','cancelled','rework','unavailable'])
@@ -84,6 +110,22 @@ test('cleared cards stay hidden until requested and running cards cannot be clea
   context.renderProjectHome();
   assert.equal(node('home-items').children.length,2);
   assert.equal(node('home-items').children[0].children[3].children[2].textContent,'恢复到首页');
+});
+
+test('old service and request failures explain the problem beside the clicked card',async()=>{
+  const {context}=setup();
+  let calls=0;
+  context.api=async()=>{calls++;throw new Error('network unavailable');};
+  context.actorName=()=> 'tester';
+  const notice={textContent:''},button={disabled:false};
+  await context.setHomeCleared({item:{id:'old'}},button,notice);
+  assert.equal(calls,0);
+  assert.match(notice.textContent,/重启 8001/);
+  await context.setHomeCleared({item:{id:'new',home_hidden:0,version:1}},button,notice);
+  assert.equal(calls,1);
+  assert.match(notice.textContent,/network unavailable/);
+  assert.equal(button.disabled,false);
+  assert.match(vm.runInContext("homeClearNotices.get('new')",context),/network unavailable/);
 });
 
 test('candidate inspection uses a top-level link without a blocked cross-origin frame',async()=>{
